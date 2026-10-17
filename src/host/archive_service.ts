@@ -8,7 +8,10 @@
  * log, so every refresh may rebuild it from disk.
  */
 import { Service, type Context } from '@deepseek-ai/cordis'
+import { promises as fs } from 'node:fs'
+import path from 'node:path'
 import { ArchiveIndexer } from '../core/archive_indexer.js'
+import { HttpEmbeddingProvider, type HttpEmbeddingConfig } from '../core/http_embedding.js'
 import type { IndexStats, SearchMode, SearchResponse } from '../core/types.js'
 
 /** Service name this instance registers under. */
@@ -119,6 +122,11 @@ export class ArchiveService extends Service {
 
   private pendingRefresh: Promise<void> | undefined
 
+  private currentEmbeddingConfig: HttpEmbeddingConfig = {
+    url: 'http://192.168.50.203:11434/v1/embeddings',
+    model: 'qwen3-embedding:0.6b',
+  }
+
   constructor(ctx: Context, config: ArchiveServiceConfig = {}) {
     super(ctx, ARCHIVE_SERVICE_NAME)
     this.config = resolveArchiveServiceConfig(config)
@@ -127,6 +135,95 @@ export class ArchiveService extends Service {
       ...(this.config.indexDir === undefined ? {} : { indexDir: this.config.indexDir }),
     })
     ctx.effect(() => () => { this.indexer.close() }, 'archiveSearch.close')
+    this.initEmbedding()
+  }
+
+  private async initEmbedding(): Promise<void> {
+    try {
+      const configPath = path.join(this.indexer.indexDir, 'embedding_config.json')
+      const raw = await fs.readFile(configPath, 'utf-8').catch(() => null)
+      if (raw) {
+        const parsed = JSON.parse(raw)
+        this.currentEmbeddingConfig = {
+          url: parsed.url || this.currentEmbeddingConfig.url,
+          model: parsed.model || this.currentEmbeddingConfig.model,
+          apiKey: parsed.apiKey || undefined,
+        }
+      }
+      const provider = new HttpEmbeddingProvider(this.currentEmbeddingConfig)
+      const ok = await provider.probe()
+      if (ok) {
+        this.indexer.setProvider(provider)
+      }
+    } catch {
+      // 静默降级为内置哈希向量
+    }
+  }
+
+  async getEmbeddingConfig(): Promise<{ url: string; model: string; hasApiKey: boolean; dimensions?: number }> {
+    return {
+      url: this.currentEmbeddingConfig.url || '',
+      model: this.currentEmbeddingConfig.model || '',
+      hasApiKey: Boolean(this.currentEmbeddingConfig.apiKey),
+      dimensions: this.indexer.vectorIndex.provider?.dimensions ?? 1024,
+    }
+  }
+
+  async saveEmbeddingConfig(draft: { url?: string; model?: string; apiKey?: string }): Promise<{ url: string; model: string; hasApiKey: boolean; dimensions?: number }> {
+    const nextUrl = draft.url?.trim() || this.currentEmbeddingConfig.url || ''
+    const nextModel = draft.model?.trim() || this.currentEmbeddingConfig.model || ''
+    // 若 apiKey 未传，保持已有 apiKey 不变；若传了空串则清空
+    const nextApiKey = draft.apiKey !== undefined ? draft.apiKey.trim() || undefined : this.currentEmbeddingConfig.apiKey
+
+    this.currentEmbeddingConfig = {
+      url: nextUrl,
+      model: nextModel,
+      apiKey: nextApiKey,
+    }
+
+    try {
+      await fs.mkdir(this.indexer.indexDir, { recursive: true })
+      const configPath = path.join(this.indexer.indexDir, 'embedding_config.json')
+      await fs.writeFile(configPath, JSON.stringify(this.currentEmbeddingConfig, null, 2), 'utf-8')
+    } catch {
+      // ignore
+    }
+
+    const provider = new HttpEmbeddingProvider(this.currentEmbeddingConfig)
+    const ok = await provider.probe()
+    if (ok) {
+      this.indexer.setProvider(provider)
+    }
+
+    return this.getEmbeddingConfig()
+  }
+
+  async testEmbedding(draft: { url?: string; model?: string; apiKey?: string }): Promise<{ ok: boolean; message: string; dimensions?: number }> {
+    try {
+      const provider = new HttpEmbeddingProvider({
+        url: draft.url?.trim() || this.currentEmbeddingConfig.url,
+        model: draft.model?.trim() || this.currentEmbeddingConfig.model,
+        apiKey: draft.apiKey !== undefined ? draft.apiKey.trim() || undefined : this.currentEmbeddingConfig.apiKey,
+      })
+      const ok = await provider.probe()
+      if (ok) {
+        return { ok: true, message: 'Connected', dimensions: provider.dimensions }
+      }
+      return { ok: false, message: 'Provider probe returned empty or invalid vector' }
+    } catch (e: any) {
+      return { ok: false, message: e?.message || String(e) }
+    }
+  }
+
+  async reindexAll(): Promise<{ documents: number; dimensions: number; tookMs: number; errors: readonly string[] }> {
+    const started = Date.now()
+    const stats = await this.indexer.fullIndex()
+    return {
+      documents: stats.indexedDocuments,
+      dimensions: stats.vectorDimensions,
+      tookMs: Date.now() - started,
+      errors: stats.errors,
+    }
   }
 
   /** Size and freshness of the index, without triggering a scan. */

@@ -105,6 +105,92 @@ export function apply(ctx: Context, config: ArchiveServiceConfig = {}): void {
           }
         },
       })
+
+      conn.fetch.register({
+        path: '/api/archive-search/config',
+        methods: ['GET', 'POST'],
+        requestBody: 'buffered',
+        async fetch(request: Request) {
+          try {
+            if (request.method === 'GET') {
+              const conf = await service.getEmbeddingConfig()
+              return new Response(JSON.stringify(conf), {
+                status: 200,
+                headers: { 'content-type': 'application/json' },
+              })
+            }
+            const body = (await request.json()) as any
+            const updated = await service.saveEmbeddingConfig({
+              url: body?.url,
+              model: body?.model,
+              apiKey: body?.apiKey,
+            })
+            return new Response(JSON.stringify(updated), {
+              status: 200,
+              headers: { 'content-type': 'application/json' },
+            })
+          } catch (err: any) {
+            return new Response(
+              JSON.stringify({ error: { message: err?.message || String(err) } }),
+              {
+                status: 500,
+                headers: { 'content-type': 'application/json' },
+              },
+            )
+          }
+        },
+      })
+
+      conn.fetch.register({
+        path: '/api/archive-search/test-embedding',
+        methods: ['POST'],
+        requestBody: 'buffered',
+        async fetch(request: Request) {
+          try {
+            const body = (await request.json()) as any
+            const result = await service.testEmbedding({
+              url: body?.url,
+              model: body?.model,
+              apiKey: body?.apiKey,
+            })
+            return new Response(JSON.stringify(result), {
+              status: 200,
+              headers: { 'content-type': 'application/json' },
+            })
+          } catch (err: any) {
+            return new Response(
+              JSON.stringify({ error: { message: err?.message || String(err) } }),
+              {
+                status: 500,
+                headers: { 'content-type': 'application/json' },
+              },
+            )
+          }
+        },
+      })
+
+      conn.fetch.register({
+        path: '/api/archive-search/reindex',
+        methods: ['POST'],
+        requestBody: 'buffered',
+        async fetch() {
+          try {
+            const result = await service.reindexAll()
+            return new Response(JSON.stringify(result), {
+              status: 200,
+              headers: { 'content-type': 'application/json' },
+            })
+          } catch (err: any) {
+            return new Response(
+              JSON.stringify({ error: { message: err?.message || String(err) } }),
+              {
+                status: 500,
+                headers: { 'content-type': 'application/json' },
+              },
+            )
+          }
+        },
+      })
     }
   })
 }

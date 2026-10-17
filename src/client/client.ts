@@ -101,6 +101,77 @@ export function create_http_transport(base_url = ''): ArchiveSearchTransport {
       if (!response.ok) throw new Error(error_message(response.status, payload))
       return to_search_response(payload)
     },
+
+    async embeddingConfig(signal) {
+      const fetch_impl = globalThis.fetch
+      const response = await fetch_impl(`${base_url}/api/archive-search/config`, {
+        method: 'GET',
+        credentials: 'same-origin',
+        ...(signal === undefined ? {} : { signal }),
+      })
+      const payload = (await read_json(response)) as any
+      if (!response.ok) throw new Error(error_message(response.status, payload))
+      return {
+        url: payload?.url || '',
+        model: payload?.model || '',
+        hasApiKey: Boolean(payload?.hasApiKey),
+        dimensions: payload?.dimensions,
+      }
+    },
+
+    async saveEmbeddingConfig(config, signal) {
+      const fetch_impl = globalThis.fetch
+      const response = await fetch_impl(`${base_url}/api/archive-search/config`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify(config),
+        ...(signal === undefined ? {} : { signal }),
+      })
+      const payload = (await read_json(response)) as any
+      if (!response.ok) throw new Error(error_message(response.status, payload))
+      return {
+        url: payload?.url || '',
+        model: payload?.model || '',
+        hasApiKey: Boolean(payload?.hasApiKey),
+        dimensions: payload?.dimensions,
+      }
+    },
+
+    async testEmbedding(config, signal) {
+      const fetch_impl = globalThis.fetch
+      const response = await fetch_impl(`${base_url}/api/archive-search/test-embedding`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify(config),
+        ...(signal === undefined ? {} : { signal }),
+      })
+      const payload = (await read_json(response)) as any
+      if (!response.ok) throw new Error(error_message(response.status, payload))
+      return {
+        ok: Boolean(payload?.ok),
+        message: payload?.message || (payload?.ok ? 'OK' : 'Failed'),
+        dimensions: payload?.dimensions,
+      }
+    },
+
+    async reindex(signal) {
+      const fetch_impl = globalThis.fetch
+      const response = await fetch_impl(`${base_url}/api/archive-search/reindex`, {
+        method: 'POST',
+        credentials: 'same-origin',
+        ...(signal === undefined ? {} : { signal }),
+      })
+      const payload = (await read_json(response)) as any
+      if (!response.ok) throw new Error(error_message(response.status, payload))
+      return {
+        documents: payload?.documents ?? 0,
+        dimensions: payload?.dimensions ?? 0,
+        tookMs: payload?.tookMs ?? 0,
+        errors: payload?.errors ?? [],
+      }
+    },
   }
 }
 
