@@ -1,0 +1,14 @@
+# Bundle patch for dsh-plugin-archive-search.
+# Applied after the profile's bundle layers, this inserts the plugin's Host row,
+# which provides the `archiveSearch` service, the `archive_search` tool, and its
+# prompt section. Tunables are passed through `config`:
+#   sessionsRoot       archive root (default: the harness session root, <DSH_HOME>/sessions)
+#   indexDir           index mirror directory (default <DSH_HOME>/archive-search)
+#   refreshIntervalMs  index freshness window before a search rescans (default 60000)
+#   maxLimit           ceiling for a single search's `limit` (default 50)
+#   searchTimeoutMs    cooperative deadline for one `archive_search` call (default 30000)
+
+- insert:
+    - id: archive-search
+      name: 'dsh-plugin-archive-search'
+      config: {}
