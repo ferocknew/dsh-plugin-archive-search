@@ -32,10 +32,8 @@ const PARAMETERS = {
   },
   mode: {
     type: 'string',
-    enum: ['keyword', 'semantic'],
     description:
-      '"keyword" (default) matches literal text or a regular expression; '
-      + '"semantic" ranks messages by similarity and suits paraphrased or conceptual queries.',
+      'Search mode: "keyword" (default, exact/regex matching) or "semantic" (vector similarity ranking).',
   },
   limit: {
     type: 'integer',

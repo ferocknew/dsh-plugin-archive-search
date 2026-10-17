@@ -196,11 +196,27 @@ export class ArchiveService extends Service {
     await this.ensureIndexed(signal, false)
     assertNotAborted(signal)
 
+    const cleanRawId = rawId.toLowerCase()
+    const strippedId = cleanRawId.replace(/^session-/, '')
+    const prefixedId = cleanRawId.startsWith('session-') ? cleanRawId : `session-${cleanRawId}`
+
     let session = this.indexer.getSession(rawId)
+      || this.indexer.getSession(cleanRawId)
+      || this.indexer.getSession(strippedId)
+      || this.indexer.getSession(prefixedId)
+
     if (!session) {
-      // Try prefix match
+      // 容错前缀匹配与包含匹配
       const all = this.indexer.listSessions()
-      const found = all.find((s) => s.id.startsWith(rawId) || s.id.toLowerCase().includes(rawId.toLowerCase()))
+      const found = all.find((s) => {
+        const sLower = s.id.toLowerCase()
+        const sStripped = sLower.replace(/^session-/, '')
+        return sLower === cleanRawId
+          || sStripped === strippedId
+          || sLower.startsWith(cleanRawId)
+          || sStripped.startsWith(strippedId)
+          || sLower.includes(strippedId)
+      })
       if (found) session = found
     }
 
@@ -254,11 +270,7 @@ export class ArchiveService extends Service {
 }
 
 function resolveMode(mode: unknown): SearchMode {
-  if (mode === undefined || mode === null) return 'keyword'
-  if (mode !== 'keyword' && mode !== 'semantic') {
-    throw new ArchiveSearchError('INVALID_REQUEST', `unknown search mode: ${String(mode)}`)
-  }
-  return mode
+  return mode === 'semantic' ? 'semantic' : 'keyword'
 }
 
 function resolveLimit(limit: unknown, maxLimit: number): number {
