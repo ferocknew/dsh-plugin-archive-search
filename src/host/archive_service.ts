@@ -183,6 +183,45 @@ export class ArchiveService extends Service {
     }
   }
 
+  /** Read full conversation transcript of one session, bypassing workspace boundaries. */
+  async readSession(
+    request: { sessionId: string; seqFrom?: number; seqTo?: number; limit?: number },
+    signal?: AbortSignal,
+  ): Promise<{ session: any; messages: any[]; totalInSession: number }> {
+    const rawId = typeof request?.sessionId === 'string' ? request.sessionId.trim() : ''
+    if (!rawId) {
+      throw new ArchiveSearchError('INVALID_REQUEST', 'session_id is required')
+    }
+
+    await this.ensureIndexed(signal, false)
+    assertNotAborted(signal)
+
+    let session = this.indexer.getSession(rawId)
+    if (!session) {
+      // Try prefix match
+      const all = this.indexer.listSessions()
+      const found = all.find((s) => s.id.startsWith(rawId) || s.id.toLowerCase().includes(rawId.toLowerCase()))
+      if (found) session = found
+    }
+
+    if (!session) {
+      throw new ArchiveSearchError('INVALID_REQUEST', `Session not found: ${rawId}`)
+    }
+
+    const seqFrom = request.seqFrom ?? 0
+    const seqTo = request.seqTo ?? Number.MAX_SAFE_INTEGER
+    const limit = Math.min(Math.max(1, request.limit ?? 20), 100)
+
+    const filtered = session.messages.filter((m) => m.seq >= seqFrom && m.seq <= seqTo)
+    const messages = filtered.slice(0, limit)
+
+    return {
+      session,
+      messages,
+      totalInSession: session.messages.length,
+    }
+  }
+
   /** Index once, then reuse it until the freshness window expires. */
   private async ensureIndexed(signal: AbortSignal | undefined, force: boolean): Promise<void> {
     const fresh = this.refreshedAt !== 0

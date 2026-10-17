@@ -149,6 +149,7 @@ function formatResultItem(item: SearchResultItem, position: number): string {
     '```text',
     ...lines,
     '```',
+    `Tip: Read full conversation by calling archive_read(session_id: "${item.sessionId}", seq_from: ${Math.max(0, item.seq - 2)}, limit: 15)`,
     '',
   ].join('\n')
 }
